@@ -1,0 +1,165 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CatchUp Galaxy – What did I miss?</title>
+<style>
+:root{--bg:#05060f;--tx:#e8ebf7;--mut:#8a92b2;--glass:#0d1122cc;--line:#2a3157;--c:#ff4d6d;--h:#ff9f43;--m:#4dabf7;--l:#6b7399;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#05060f}}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 system-ui,sans-serif;overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.g{position:fixed;background:var(--glass);border:1px solid var(--line);border-radius:14px;padding:12px 14px;backdrop-filter:blur(8px);max-width:calc(100% - 24px)}
+#hud{top:calc(12px + env(safe-area-inset-top,0px));left:12px;width:340px}
+h1{margin:0;font-size:18px}h1 b{background:linear-gradient(90deg,#7c5cff,#3ddc97);-webkit-background-clip:text;color:transparent}
+.t{display:inline-block;padding:3px 10px;margin:6px 4px 0 0;border-radius:99px;background:#1b2144;cursor:pointer;font-size:12px;border:1px solid transparent}
+.t.on{border-color:#7c5cff;background:#2b2370}
+button{background:#7c5cff;color:#fff;border:0;border-radius:9px;padding:8px 12px;font:600 13px inherit;cursor:pointer}
+button.s{background:#1b2144}
+#card{bottom:calc(12px + env(safe-area-inset-bottom,0px));left:12px;width:340px;display:none}
+#tip{position:fixed;pointer-events:none;background:#000c;padding:4px 8px;border-radius:6px;font-size:12px;display:none;max-width:240px}
+#in{right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));width:300px}
+textarea,input{width:100%;box-sizing:border-box;background:#080b1a;color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:8px;font:12px inherit}
+textarea{height:110px;margin:6px 0}
+.lg{display:flex;gap:10px;font-size:11px;color:var(--mut);margin-top:6px;flex-wrap:wrap}.lg i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}
+.lv{font-weight:700;font-size:11px;text-transform:uppercase}
+@media(max-width:700px){#in{display:none}#hud,#card{width:calc(100% - 24px)}}
+</style></head><body>
+<canvas id="c"></canvas>
+<div class="g" id="hud">
+ <h1>📬 Catch<b>Up</b> Solar System</h1>
+ <div id="sum" style="color:var(--mut);margin-top:4px"></div>
+ <div id="tabs"></div>
+ <div style="margin-top:8px"><button onclick="tour()">▶ Fly the tour</button> <button class="s" onclick="idle=!idle">⏯ Spin</button></div>
+ <div class="lg"><span><i style="background:var(--c)"></i>critical</span><span><i style="background:var(--h)"></i>high</span><span><i style="background:var(--m)"></i>medium</span><span><i style="background:var(--l)"></i>noise</span></div>
+ <div style="color:var(--mut);font-size:11px;margin-top:6px">Your inbox as a solar system: orbit distance = importance, noise drifts in the outer belt. 💍 ring = deadline · 🟢 moon = mentions you · ✨ big aura = urgent. Drag to orbit · scroll/pinch to zoom · click an orb.</div>
+</div>
+<div class="g" id="card"></div><div id="tip"></div>
+<div class="g" id="in"><b>Your chat</b><textarea id="t" placeholder="Paste WhatsApp export or Name: message lines"></textarea>
+ <input id="me" value="Arjun, Arj" placeholder="Your name(s)"><div style="margin-top:6px"><button onclick="load($('#t').value)">Rebuild galaxy</button> <button class="s" onclick="$('#t').value=SAMPLE;load(SAMPLE)">Sample</button></div>
+ <div style="color:var(--mut);font-size:11px;margin-top:6px">🔒 Runs entirely in your browser.</div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const SAMPLE=`Priya: Good morning everyone!
+Rahul: lol
+Coach Meena: Team, hackathon registration closes tomorrow 5 pm. Please submit team details ASAP!!
+Priya: @Arjun can you share the final PPT by tonight?
+Rahul: ok
+Sana: We decided to go with the React + Node stack. It's final.
+Dev: haha nice
+Coach Meena: Venue changed to Block B, Lab 3. Reporting time moved to 8:30 am on Friday.
+Sana: Arjun, did you pay the registration fee?
+Rahul: 😂😂
+Dev: Everyone please bring your college ID and laptop charger, mandatory.
+Priya: anyone up for lunch?
+Sana: Arj please review the abstract before 11/10 midnight.
+Rahul: thanks
+Dev: gm
+Priya: lol that meme
+Rahul: brb
+Sana: Reminder: demo rehearsal today 4 pm, please be on time!`;
+/* ---------- mini engine ---------- */
+const RX={dl:/\b(today|tonight|tomorrow|eod|deadline|due|by \w+|\d{1,2}(:\d{2})?\s?(am|pm)|\d{1,2}\/\d{1,2}|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+ur:/\b(urgent|asap|immediately|important|mandatory|must|critical|emergency)\b|!!/i,ac:/\b(please|pls|submit|send|bring|share|pay|review|confirm|need to|make sure|don'?t forget)\b/i,
+de:/\b(decided|final|confirmed|agreed|approved)\b/i,ch:/\b(changed|moved|postponed|rescheduled|cancel+ed|venue)\b/i};
+const NOISE=/^(ok+|okay|lol|haha+\W*\w*|thanks?|thx|gm|brb|nice|cool|yes|yeah|hi|hello)\W*$/i;
+function analyze(text,me){
+ const names=me.toLowerCase().split(',').map(s=>s.trim()).filter(Boolean),pre=/^\[?\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4},?\s+\d{1,2}:\d{2}(:\d{2})?\s?([ap]m)?\]?\s*-?\s*/i;
+ return text.split(/\r?\n/).map(l=>l.replace(pre,'').trim()).map(l=>l.match(/^([^:]{1,30}):\s+(.+)$/)).filter(Boolean).map((m,i)=>{
+  const who=m[1],t=m[2],tags=[];let s=0;
+  const mine=names.some(n=>new RegExp('(^|\\W)@?'+n+'(\\W|$)','i').test(t))&&!names.includes(who.toLowerCase());
+  if(!NOISE.test(t)&&!/^\W*$/.test(t)){
+   if(mine){s+=4;tags.push('mention')}if(RX.ur.test(t)){s+=3;tags.push('urgent')}if(RX.dl.test(t)){s+=3;tags.push('deadline')}
+   if(RX.ch.test(t)){s+=3;tags.push('change')}if(RX.de.test(t)){s+=3;tags.push('decision')}if(RX.ac.test(t)){s+=2;tags.push('task')}
+   if(/\?/.test(t)&&mine){s+=2;tags.push('question')}}
+  return{i,who,t,s,tags,lv:s>=9?'critical':s>=6?'high':s>=3?'medium':'low'}});
+}
+/* ---------- 3D: a solar system for your inbox ---------- */
+const COL={critical:0xff4d6d,high:0xff9f43,medium:0x4dabf7,low:0x6b7399},CSS={critical:'var(--c)',high:'var(--h)',medium:'var(--m)',low:'var(--l)'};
+const R=new THREE.WebGLRenderer({canvas:$('#c'),antialias:true});R.setPixelRatio(Math.min(devicePixelRatio,2));R.setClearColor(0x03040a,1);
+const S=new THREE.Scene();S.fog=new THREE.FogExp2(0x03040a,.005);
+const C=new THREE.PerspectiveCamera(60,1,.1,600);
+const G=new THREE.Group();S.add(G);
+S.add(new THREE.AmbientLight(0x4a5a99,.6));
+G.add(new THREE.PointLight(0xfff0d8,2.6,0,1));
+const GT={};
+function glowTex(c){if(GT[c])return GT[c];const k=document.createElement('canvas');k.width=k.height=128;const g=k.getContext('2d'),r=g.createRadialGradient(64,64,0,64,64,64);
+ r.addColorStop(0,c+'ff');r.addColorStop(.25,c+'80');r.addColorStop(1,c+'00');g.fillStyle=r;g.fillRect(0,0,128,128);return GT[c]=new THREE.CanvasTexture(k)}
+const spr=(c,s,o)=>{const m=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex(c),blending:THREE.AdditiveBlending,transparent:true,opacity:o,depthWrite:false}));m.scale.setScalar(s);return m};
+function surf(base,kind){const k=document.createElement('canvas');k.width=256;k.height=128;const g=k.getContext('2d');g.fillStyle=base;g.fillRect(0,0,256,128);
+ const n=kind==='gas'?70:300;for(let i=0;i<n;i++){const x=Math.random()*256,y=Math.random()*128;
+  g.fillStyle=kind==='lava'?(Math.random()<.4?'rgba(255,190,60,.3)':'rgba(0,0,0,.18)'):Math.random()<.5?'rgba(255,255,255,.08)':'rgba(0,0,0,.14)';
+  if(kind==='gas')g.fillRect(0,y,256,2+Math.random()*9);else{g.beginPath();g.ellipse(x,y,4+Math.random()*16,3+Math.random()*9,0,0,7);g.fill()}}
+ const t=new THREE.CanvasTexture(k);t.wrapS=THREE.RepeatWrapping;return t}
+/* backdrop: stars, nebulae, protoplanetary dust */
+function pts(n,sp,sz,col,op,flat){const a=new Float32Array(n*3);for(let i=0;i<n;i++){const r=flat?4+Math.random()*20:60+Math.random()*140,t=Math.random()*6.28;
+ a[i*3]=flat?Math.cos(t)*r:(Math.random()-.5)*sp;a[i*3+1]=flat?(Math.random()-.5)*2.5:(Math.random()-.5)*sp;a[i*3+2]=flat?Math.sin(t)*r:(Math.random()-.5)*sp}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(a,3));return new THREE.Points(g,new THREE.PointsMaterial({color:col,size:sz,transparent:true,opacity:op,depthWrite:false}))}
+const stars=pts(2500,260,.45,0xbfcaff,.8);S.add(stars);const dust=pts(900,0,.12,0xffd9a8,.45,true);G.add(dust);
+[['#7c5cff',-70,20,-110],['#1e90ff',85,-30,-125],['#ff4d6d',-25,-65,-105],['#3ddc97',55,55,-135]].forEach(n=>{const s=spr(n[0],170,.2);s.position.set(n[1],n[2],n[3]);S.add(s)});
+/* the sun = YOU */
+const sunTex=surf('#ff9a2e','rock');
+const sun=new THREE.Mesh(new THREE.SphereGeometry(1.5,32,32),new THREE.MeshBasicMaterial({map:sunTex,color:0xffd08a}));G.add(sun);
+const shell=new THREE.Mesh(new THREE.IcosahedronGeometry(2.1,1),new THREE.MeshBasicMaterial({color:0x7c5cff,wireframe:true,transparent:true,opacity:.3}));G.add(shell);
+G.add(spr('#ffb347',11,.9),spr('#ff7a2f',26,.3));
+let orbs=[],items=[],filter='all',sel=null,idle=true,look=new THREE.Vector3(),lookT=new THREE.Vector3(),rx=.35,ry=0,zoom=30,touring=null;
+const rock=new THREE.DodecahedronGeometry(1,0),sph=new THREE.SphereGeometry(1,32,32),ringG=new THREE.RingGeometry(1.5,2.2,64);
+function clear(){orbs.forEach(o=>{G.remove(o.p);G.remove(o.orbit)});orbs=[]}
+function load(text){
+ try{items=analyze(text,$('#me').value)}catch(e){items=[]}clear();
+ if(!items.length){$('#sum').textContent='No messages found – use “Name: message” lines.';return}
+ const n=items.length;
+ items.forEach((x,i)=>{
+  const kind=x.lv==='critical'?'lava':x.lv==='high'?'gas':x.lv==='medium'?'rock':'rubble';
+  const r=3.5+(10-Math.min(x.s,10))*1.25+(kind==='rubble'?Math.random()*2.5:Math.random()*.6),incl=(Math.random()-.5)*.35,a0=Math.random()*6.28,spd=.5/Math.pow(r,1.1);
+  const P=new THREE.Object3D(),size=kind==='rubble'?.2+Math.random()*.16:.4+Math.min(x.s,10)*.13;
+  const mat=kind==='rubble'?new THREE.MeshStandardMaterial({color:0x7a8099,roughness:1,flatShading:true,transparent:true})
+   :new THREE.MeshStandardMaterial({map:surf({lava:'#4a0d18',gas:'#a8691c',rock:'#2b5f8f'}[kind],kind),roughness:.85,emissive:COL[x.lv],emissiveIntensity:kind==='lava'?.55:.07,transparent:true});
+  const body=new THREE.Mesh(kind==='rubble'?rock:sph,mat);body.userData.i=i;
+  if(kind==='rubble')body.scale.set(1,.6+Math.random()*.6,.7+Math.random()*.5);P.add(body);
+  const aura=kind==='rubble'?null:spr('#'+COL[x.lv].toString(16).padStart(6,'0'),x.tags.includes('urgent')?6:3.4,x.tags.includes('urgent')?.7:.3);if(aura)P.add(aura);
+  let ring=null,moon=null;
+  if(x.tags.includes('deadline')){ring=new THREE.Mesh(ringG,new THREE.MeshBasicMaterial({color:0xffe9b0,side:THREE.DoubleSide,transparent:true,opacity:.55}));ring.rotation.x=1.15;ring.rotation.y=.3;P.add(ring)}
+  if(x.tags.includes('mention')){moon=new THREE.Mesh(sph,new THREE.MeshStandardMaterial({color:0x3ddc97,emissive:0x3ddc97,emissiveIntensity:.8}));moon.scale.setScalar(.28);P.add(moon)}
+  const pp=[];for(let k=0;k<=96;k++){const a=k/96*6.2832;pp.push(new THREE.Vector3(Math.cos(a)*r,Math.sin(a)*Math.sin(incl)*r,Math.sin(a)*Math.cos(incl)*r))}
+  const orbit=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pp),new THREE.LineBasicMaterial({color:COL[x.lv],transparent:true,opacity:x.s>=3?.16:.04}));
+  G.add(P,orbit);orbs.push({p:P,body,aura,ring,moon,orbit,x,size,r,incl,a0,spd,sc:size,op:1,kind});
+ });
+ const c=k=>items.filter(x=>x.tags.includes(k)).length;
+ $('#sum').innerHTML=`<b style="color:var(--tx)">${n}</b> messages → <b style="color:var(--c)">${items.filter(x=>x.lv==='critical').length}</b> critical · ${c('mention')} mention you · ${c('task')} tasks · ${c('deadline')} deadlines · <b style="color:var(--l)">${Math.round(100*items.filter(x=>x.lv==='low').length/n)}%</b> noise`;
+ setFilter('all');pick(null);
+}
+function setFilter(f){filter=f;$('#tabs').innerHTML=['all','critical','mention','task','deadline','decision','change'].map(k=>`<span class="t ${k===f?'on':''}" onclick="setFilter('${k}')">${k}</span>`).join('')}
+const ok=x=>filter==='all'||x.lv===filter||x.tags.includes(filter);
+function pick(i){sel=i;const c=$('#card');if(i==null){c.style.display='none';return}
+ const x=items[i];c.style.display='block';
+ c.innerHTML=`<span class="lv" style="color:${CSS[x.lv]}">${x.lv} · score ${x.s}</span><div style="font-weight:700;margin:2px 0">${esc(x.who)}</div><div>${esc(x.t)}</div><div style="color:var(--mut);margin-top:6px;font-size:12px">${x.tags.map(t=>'#'+t).join(' ')||'#chatter'}</div>`}
+function tour(){const list=orbs.filter(o=>o.x.s>=6).sort((a,b)=>b.x.s-a.x.s);if(!list.length)return;let k=0;clearInterval(touring);idle=false;
+ const go=()=>{if(k>=list.length){clearInterval(touring);pick(null);idle=true;return}pick(list[k++].x.i)};go();touring=setInterval(go,3500)}
+let drag=false,lx=0,ly=0,moved=0;const ray=new THREE.Raycaster(),mp=new THREE.Vector2(),cv=$('#c');
+cv.addEventListener('pointerdown',e=>{drag=true;lx=e.clientX;ly=e.clientY;moved=0;idle=false;clearInterval(touring)});
+addEventListener('pointerup',e=>{if(drag&&moved<5&&e.target===cv)pick(hit(e));drag=false});
+addEventListener('pointermove',e=>{
+ if(drag){const dx=e.clientX-lx,dy=e.clientY-ly;ry+=dx*.006;rx=Math.max(-1.3,Math.min(1.3,rx+dy*.005));lx=e.clientX;ly=e.clientY;moved+=Math.abs(dx)+Math.abs(dy)}
+ const h=hit(e),tp=$('#tip');
+ if(h!=null&&e.target===cv){tp.style.display='block';tp.style.left=e.clientX+14+'px';tp.style.top=e.clientY+14+'px';tp.textContent=items[h].who+': '+items[h].t.slice(0,70);cv.style.cursor='pointer'}else{tp.style.display='none';cv.style.cursor='grab'}});
+addEventListener('wheel',e=>{zoom=Math.max(8,Math.min(70,zoom+e.deltaY*.02))},{passive:true});
+let pd=0;cv.addEventListener('touchmove',e=>{if(e.touches.length===2){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);if(pd)zoom=Math.max(8,Math.min(70,zoom-(d-pd)*.08));pd=d}},{passive:true});
+cv.addEventListener('touchend',()=>pd=0);
+function hit(e){mp.set(e.clientX/innerWidth*2-1,-(e.clientY/innerHeight)*2+1);ray.setFromCamera(mp,C);
+ const r=ray.intersectObjects(orbs.filter(o=>ok(o.x)).map(o=>o.body));return r.length?r[0].object.userData.i:null}
+function resize(){R.setSize(innerWidth,innerHeight,false);C.aspect=innerWidth/innerHeight;C.updateProjectionMatrix()}addEventListener('resize',resize);resize();
+const clock=new THREE.Clock(),w=new THREE.Vector3();
+(function loop(){requestAnimationFrame(loop);const t=clock.getElapsedTime();
+ if(idle)ry+=.0012;G.rotation.y+=(ry-G.rotation.y)*.08;G.rotation.x+=(rx-G.rotation.x)*.08;
+ sun.rotation.y=t*.1;shell.rotation.y=t*.4;shell.rotation.x=t*.2;stars.rotation.y=t*.002;dust.rotation.y=t*.01;
+ orbs.forEach((o,i)=>{const a=o.a0+t*o.spd,on=ok(o.x),isS=sel===i;
+  o.p.position.set(Math.cos(a)*o.r,Math.sin(a)*Math.sin(o.incl)*o.r,Math.sin(a)*Math.cos(o.incl)*o.r);
+  const tgt=on?o.size*(isS?1.5:1):.04,pulse=o.x.lv==='critical'?1+Math.sin(t*4+i)*.06:1;
+  o.sc+=(tgt-o.sc)*.12;o.p.scale.setScalar(o.sc*pulse);o.body.rotation.y=t*(.3+o.spd*3)+i;
+  o.op+=((on?1:.1)-o.op)*.12;o.body.material.opacity=o.op;if(o.aura)o.aura.material.opacity=(o.x.tags.includes('urgent')?.7:.3)*o.op*(isS?1.6:1);
+  if(o.ring)o.ring.material.opacity=.55*o.op;o.orbit.material.opacity=(isS?.8:o.x.s>=3?.16:.04)*(on?1:.2);
+  if(o.moon){o.moon.position.set(Math.cos(t*3+i)*1.9,.3,Math.sin(t*3+i)*1.9)}});
+ if(sel!=null&&orbs[sel]){orbs[sel].p.getWorldPosition(w);lookT.copy(w).multiplyScalar(.6)}else lookT.set(0,0,0);
+ look.lerp(lookT,.05);C.position.x=Math.sin(t*.1)*1.5;C.position.y=7+Math.cos(t*.13);C.position.z+=(zoom-C.position.z)*.08;C.lookAt(look);R.render(S,C)})();
+$('#t').value=SAMPLE;load(SAMPLE);
+</script></body></html>
